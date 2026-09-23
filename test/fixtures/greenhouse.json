@@ -1,0 +1,21 @@
+{
+  "jobs": [
+    {
+      "id": 101,
+      "title": "Senior Backend Engineer",
+      "absolute_url": "https://boards.greenhouse.io/gitlab/jobs/101",
+      "updated_at": "2026-09-20T12:00:00-04:00",
+      "location": { "name": "Remote, EMEA" },
+      "content": "&lt;p&gt;We build&amp;nbsp;scalable systems in Node.js.&lt;/p&gt;&lt;ul&gt;&lt;li&gt;GraphQL APIs&lt;/li&gt;&lt;/ul&gt;"
+    },
+    {
+      "id": 102,
+      "title": "Office Manager",
+      "absolute_url": "https://boards.greenhouse.io/gitlab/jobs/102",
+      "updated_at": "2026-09-19T12:00:00-04:00",
+      "location": { "name": "San Francisco, CA (On-site)" },
+      "content": "&lt;p&gt;On-site role in our SF office.&lt;/p&gt;"
+    }
+  ],
+  "meta": { "total": 2 }
+}

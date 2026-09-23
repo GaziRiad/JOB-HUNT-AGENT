@@ -1,0 +1,15 @@
+{
+  "name": "job-hunt-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Automated remote/EOR + freelance job-hunt agent: fetch -> filter -> score -> Google Sheet.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "phase0": "node scripts/phase0.js",
+    "daily": "node daily.js",
+    "start": "node daily.js"
+  }
+}

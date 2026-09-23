@@ -1,0 +1,27 @@
+{
+  "apiVersion": "1",
+  "organizationName": "Ramp",
+  "jobs": [
+    {
+      "id": "a1",
+      "title": "Full Stack Engineer",
+      "location": "Remote - Americas",
+      "isRemote": true,
+      "employmentType": "FullTime",
+      "jobUrl": "https://jobs.ashbyhq.com/ramp/a1",
+      "applyUrl": "https://jobs.ashbyhq.com/ramp/a1/application",
+      "publishedAt": "2026-09-01T00:00:00.000Z",
+      "descriptionPlain": "Work across our Node and React stack building AI features."
+    },
+    {
+      "id": "a2",
+      "title": "Contract Product Designer",
+      "location": "New York",
+      "isRemote": false,
+      "employmentType": "Contract",
+      "jobUrl": "https://jobs.ashbyhq.com/ramp/a2",
+      "publishedAt": "2026-09-02T00:00:00.000Z",
+      "descriptionPlain": "On-site contract design role."
+    }
+  ]
+}

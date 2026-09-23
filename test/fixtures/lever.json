@@ -1,0 +1,21 @@
+[
+  {
+    "id": "l1",
+    "text": "Senior Frontend Engineer",
+    "hostedUrl": "https://jobs.lever.co/netlify/l1",
+    "applyUrl": "https://jobs.lever.co/netlify/l1/apply",
+    "categories": { "commitment": "Full-time", "location": "Remote - Worldwide", "team": "Engineering" },
+    "workplaceType": "remote",
+    "descriptionPlain": "Build the frontend with React and TypeScript.",
+    "createdAt": 1758300000000
+  },
+  {
+    "id": "l2",
+    "text": "Contract React Developer",
+    "hostedUrl": "https://jobs.lever.co/netlify/l2",
+    "categories": { "commitment": "Contract", "location": "Remote", "team": "Engineering" },
+    "workplaceType": "remote",
+    "descriptionPlain": "Short-term project to rebuild a dashboard in Next.js.",
+    "createdAt": 1758300000000
+  }
+]
