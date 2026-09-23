@@ -1,10 +1,16 @@
-// Source registry. Phase 0/1: ATS boards only. Phase 4 adds the aggregator
-// feeds (RemoteOK, WWR, Himalayas, Arbeitnow, Remotive) and HN here, each as
-// another isolated task so one failing source never fails the run.
+// Source registry. ATS boards + aggregator feeds + HN, each an isolated task so
+// one failing source never fails the run.
 import { companies } from '../../config/companies.js';
+import { sources } from '../../config/sources.js';
 import { fetchGreenhouse } from './ats-greenhouse.js';
 import { fetchLever } from './ats-lever.js';
 import { fetchAshby } from './ats-ashby.js';
+import { fetchRemoteOK } from './remoteok.js';
+import { fetchRemotive } from './remotive.js';
+import { fetchArbeitnow } from './arbeitnow.js';
+import { fetchHimalayas } from './himalayas.js';
+import { fetchWWR } from './wwr.js';
+import { fetchHN } from './hn.js';
 import { mapLimit } from '../lib/async.js';
 
 export function atsTasks() {
@@ -15,8 +21,23 @@ export function atsTasks() {
   return tasks;
 }
 
+export function feedTasks() {
+  const tasks = [];
+  if (sources.remoteok) tasks.push({ label: 'remoteok', run: () => fetchRemoteOK() });
+  if (sources.remotive) tasks.push({ label: 'remotive', run: () => fetchRemotive() });
+  if (sources.arbeitnow) tasks.push({ label: 'arbeitnow', run: () => fetchArbeitnow() });
+  if (sources.himalayas) tasks.push({ label: 'himalayas', run: () => fetchHimalayas() });
+  if (sources.wwr) tasks.push({ label: 'wwr', run: () => fetchWWR() });
+  if (sources.hn) tasks.push({ label: 'hn', run: () => fetchHN() });
+  return tasks;
+}
+
+export function allTasks() {
+  return atsTasks().concat(feedTasks());
+}
+
 // Runs every source with limited concurrency and isolates failures.
-export async function collectJobs({ concurrency = 6, tasks = atsTasks() } = {}) {
+export async function collectJobs({ concurrency = 6, tasks = allTasks() } = {}) {
   const results = await mapLimit(tasks, concurrency, async (task) => {
     try {
       return { label: task.label, jobs: await task.run() };

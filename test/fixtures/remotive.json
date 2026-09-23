@@ -1,0 +1,15 @@
+{
+  "jobs": [
+    {
+      "id": 1,
+      "title": "Full Stack Developer",
+      "company_name": "Globex",
+      "job_type": "full_time",
+      "candidate_required_location": "Worldwide",
+      "url": "https://remotive.com/remote-jobs/1",
+      "description": "<p>Node, React, TypeScript.</p>",
+      "publication_date": "2026-09-19",
+      "salary": "$80k-$110k"
+    }
+  ]
+}

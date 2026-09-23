@@ -81,8 +81,16 @@ Copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY`, `SHEET_ID`, and `
 - Feeds change and break. Every source is isolated, so one failing just means fewer rows that day, never a crashed run.
 - Do not run the live fetch inside a restricted network (e.g. a Claude cloud session with egress blocked); GitHub Actions and your own machine have open egress.
 
+## Sources
+
+- **ATS boards** (`config/companies.js`): Greenhouse, Lever, Ashby. The reliable, curated backbone.
+- **Aggregator feeds** (`config/sources.js`, toggle each): RemoteOK, Remotive, Arbeitnow, Himalayas (location + timezone), We Work Remotely (RSS). Keyless, best-effort, isolated.
+- **Hacker News "Who is Hiring"**: the latest monthly thread via the free Algolia API; each top comment becomes a pseudo-job the LLM structures.
+
+Contract/freelance roles from any source route to the Freelance / Contract tab automatically (via employment-type classification), so that tab needs no separate scraper.
+
+The fixture tests verify the parsing logic given each API's documented shape. The live shapes should be confirmed on the first real run (`node scripts/phase0.js` for ATS; a full `node daily.js --dry-run` for feeds) since these APIs can change; adjust the adapter if a field moved.
+
 ## Status
 
-Built and tested: Phase 0 (ATS fetchers + schema), Phase 1 (Google Sheets + dedupe + prefilter), Phase 3 (LLM scoring + tiers + drafts), Phase 2 (Actions), Phase 5 (refresh button).
-
-Next: Phase 4 - add the aggregator feeds (RemoteOK, We Work Remotely worldwide, Himalayas with timezone filter, Arbeitnow, Remotive) and Hacker News "Who is Hiring", each as an isolated adapter in `src/sources/index.js`, plus contract classification from those feeds into the Freelance tab.
+All planned phases built and tested (19 offline tests): Phase 0 (ATS fetchers + schema), Phase 1 (Google Sheets + dedupe + prefilter), Phase 3 (LLM scoring + tiers + drafts), Phase 2 (Actions), Phase 5 (refresh button), Phase 4 (aggregator feeds + HN + contract routing).

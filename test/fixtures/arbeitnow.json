@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "slug": "initech-node",
+      "company_name": "Initech",
+      "title": "Node.js Engineer",
+      "description": "<p>Backend in Node.</p>",
+      "remote": true,
+      "url": "https://www.arbeitnow.com/view/initech-node",
+      "tags": ["node"],
+      "job_types": ["full_time"],
+      "location": "Berlin",
+      "created_at": 1758240000
+    }
+  ],
+  "links": {},
+  "meta": {}
+}

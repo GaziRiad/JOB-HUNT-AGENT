@@ -1,0 +1,16 @@
+[
+  { "legal": "See https://remoteok.com/api for terms. Attribution required." },
+  {
+    "id": "101",
+    "slug": "acme-senior-react",
+    "company": "Acme",
+    "position": "Senior React Engineer",
+    "tags": ["react", "node", "contract"],
+    "description": "<p>Build with React and Node. Contract, worldwide.</p>",
+    "location": "Worldwide",
+    "url": "https://remoteok.com/remote-jobs/101",
+    "date": "2026-09-20T00:00:00+00:00",
+    "salary_min": 80000,
+    "salary_max": 120000
+  }
+]

@@ -1,0 +1,14 @@
+{
+  "jobs": [
+    {
+      "title": "Senior Frontend Engineer",
+      "companyName": "Umbrella",
+      "applicationLink": "https://himalayas.app/jobs/umbrella-fe",
+      "locationRestrictions": ["Worldwide"],
+      "timezoneRestrictions": ["UTC-2 to UTC+3"],
+      "employmentType": ["Full Time"],
+      "description": "<p>React, Next.js, TypeScript.</p>",
+      "pubDate": "2026-09-18"
+    }
+  ]
+}
