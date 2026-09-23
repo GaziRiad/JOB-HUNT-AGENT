@@ -8,10 +8,14 @@
 import 'dotenv/config';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { profile } from './config/profile.js';
+import { weights } from './config/weights.js';
 import { collectJobs } from './src/sources/index.js';
 import { dedupeJobs } from './src/dedupe.js';
 import { prefilter } from './src/prefilter.js';
 import { TAB, TAB_SPECS, jobToRow, seenRow, runRow, tabForJob, sumFetched } from './src/rows.js';
+import { createClient } from './src/anthropic.js';
+import { scoreAndDraft } from './src/enrich.js';
+import { makeFakeClient } from './src/fakeClient.js';
 
 function requireEnv(key) {
   const v = process.env[key];
@@ -62,13 +66,25 @@ async function main() {
   const fresh = deduped.filter((j) => !seenIds.has(j.id));
   const passed = fresh.filter((j) => prefilter(j, profile).pass);
 
-  // Phase 3 will insert LLM scoring + drafting here (scoring stays null for now).
-  const enriched = passed.map((job) => ({ job, scoring: null }));
+  // LLM stage: score + tier + draft on survivors. Falls back to unscored rows
+  // when there is no client (no ANTHROPIC_API_KEY), so the pipeline still runs.
+  const client = process.env.JHA_FAKE_LLM === '1' ? makeFakeClient() : createClient();
+  let enriched;
+  let llmCost = null;
+  if (client) {
+    const r = await scoreAndDraft(client, passed, { profile, weights });
+    enriched = r.enriched;
+    llmCost = r.cost;
+    enriched.sort((a, b) => (b.scoring?.score || 0) - (a.scoring?.score || 0));
+  } else {
+    enriched = passed.map((job) => ({ job, scoring: null }));
+  }
 
   const now = new Date().toISOString();
   const byTab = {};
   for (const { job, scoring } of enriched) {
     const tab = tabForJob(job, scoring);
+    if (scoring) scoring.tier = tab === TAB.TIER1 ? 'Tier 1' : tab === TAB.FREELANCE ? 'Freelance' : 'Tier 2';
     (byTab[tab] ||= []).push(jobToRow(job, scoring, now));
   }
   const tierCounts = Object.fromEntries(Object.entries(byTab).map(([k, v]) => [k, v.length]));
@@ -82,12 +98,13 @@ async function main() {
     for (const [tab, rows] of Object.entries(byTab)) await s.appendRows(sheets, spreadsheetId, tab, rows);
     await s.appendRows(sheets, spreadsheetId, TAB.SEEN, passed.map((j) => seenRow(j, now)));
     await s.appendRows(sheets, spreadsheetId, TAB.RUNS, [
-      runRow({ now, trigger, stats, freshCount: fresh.length, writtenCount: written, tierCounts, cost: null, notes: '' }),
+      runRow({ now, trigger, stats, freshCount: fresh.length, writtenCount: written, tierCounts, cost: llmCost, notes: client ? '' : 'no LLM key: rows unscored' }),
     ]);
   }
 
   console.log(`sources ok=${stats.ok} failed=${stats.failed} | fetched=${sumFetched(stats)} deduped=${deduped.length} fresh=${fresh.length} written=${written}`);
   console.log(`  Tier1=${tierCounts[TAB.TIER1] || 0} Tier2=${tierCounts[TAB.TIER2] || 0} Freelance=${tierCounts[TAB.FREELANCE] || 0}`);
+  console.log(`  scored=${client ? 'yes' : 'no (no ANTHROPIC_API_KEY)'}${llmCost != null ? ` llmCost=$${llmCost.toFixed(4)}` : ''}`);
   if (dry) console.log('  (dry-run) wrote out/preview.json');
 }
 
