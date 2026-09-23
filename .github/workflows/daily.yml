@@ -1,0 +1,40 @@
+name: job-hunt-agent daily
+
+# Runs on GitHub's infrastructure (no local machine needed).
+# - schedule: once a day (UTC). GitHub's free-tier cron can be delayed; a
+#   public repo makes it more reliable. The button uses workflow_dispatch,
+#   which is always prompt.
+# - workflow_dispatch: manual runs and the Google Sheet "Refresh now" button.
+#
+# IMPORTANT: scheduled workflows only run from the repository's DEFAULT branch,
+# so this file must be merged to the default branch to fire on cron.
+on:
+  schedule:
+    - cron: '0 6 * * *' # 06:00 UTC daily (07:00 in UTC+1). Adjust as you like.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-hunt-agent
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run daily job hunt
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          JHA_TRIGGER: ${{ github.event_name }}
+        run: node daily.js
