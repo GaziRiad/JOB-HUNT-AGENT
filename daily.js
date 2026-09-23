@@ -4,6 +4,7 @@
 //
 //   node daily.js                 # real run (needs SHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON)
 //   node daily.js --dry-run       # write out/preview.json instead of the Sheet
+//   node daily.js --demo          # offline end-to-end: fixtures + fake LLM, no keys/network
 //   JHA_FIXTURES=1 node daily.js --dry-run   # offline end-to-end using test fixtures
 import 'dotenv/config';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -39,17 +40,20 @@ async function collectFromFixtures() {
   return { jobs, stats: { ok: 3, failed: 0, perSource: { 'greenhouse:gitlab': 2, 'lever:netlify': 2, 'ashby:ramp': 2 } } };
 }
 
-async function collectForRun() {
-  if (process.env.JHA_FIXTURES === '1') return collectFromFixtures();
+async function collectForRun(useFixtures) {
+  if (useFixtures) return collectFromFixtures();
   return collectJobs();
 }
 
 async function main() {
-  const dry = process.argv.includes('--dry-run');
+  const demo = process.argv.includes('--demo'); // fixtures + fake LLM, no keys/network
+  const dry = demo || process.argv.includes('--dry-run');
+  const useFixtures = demo || process.env.JHA_FIXTURES === '1';
+  const useFakeLlm = demo || process.env.JHA_FAKE_LLM === '1';
   const trigger = process.env.JHA_TRIGGER || (process.argv.includes('--manual') ? 'manual' : 'scheduled');
-  console.log(`daily run: trigger=${trigger} dry=${dry} fixtures=${process.env.JHA_FIXTURES === '1'}`);
+  console.log(`daily run: trigger=${trigger} dry=${dry} fixtures=${useFixtures}`);
 
-  const { jobs, stats } = await collectForRun();
+  const { jobs, stats } = await collectForRun(useFixtures);
   const deduped = dedupeJobs(jobs);
 
   let seenIds = new Set();
@@ -68,7 +72,7 @@ async function main() {
 
   // LLM stage: score + tier + draft on survivors. Falls back to unscored rows
   // when there is no client (no ANTHROPIC_API_KEY), so the pipeline still runs.
-  const client = process.env.JHA_FAKE_LLM === '1' ? makeFakeClient() : createClient();
+  const client = useFakeLlm ? makeFakeClient() : createClient();
   let enriched;
   let llmCost = null;
   if (client) {

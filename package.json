@@ -8,8 +8,10 @@
     "node": ">=20"
   },
   "scripts": {
+    "test": "node --test",
     "phase0": "node scripts/phase0.js",
     "daily": "node daily.js",
+    "demo": "node daily.js --demo",
     "start": "node daily.js"
   },
   "dependencies": {

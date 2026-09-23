@@ -31,8 +31,8 @@ Code does the cheap deterministic work; the LLM only sees survivors, so cost sca
 ```bash
 npm install
 npm test                                   # offline logic tests (no network/keys)
+npm run demo                               # full offline end-to-end (fixtures + fake LLM) -> out/preview.json
 node scripts/phase0.js                     # fetch curated ATS boards, print results
-JHA_FIXTURES=1 JHA_FAKE_LLM=1 node daily.js --dry-run   # full offline end-to-end -> out/preview.json
 node daily.js --dry-run                    # real fetch + scoring, writes out/preview.json (needs ANTHROPIC_API_KEY)
 node daily.js                              # real run -> Google Sheet (needs all env below)
 ```
