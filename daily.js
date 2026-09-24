@@ -6,7 +6,8 @@
 //   node daily.js --dry-run --yes                 # real fetch + scoring to out/preview.json (spends)
 //   node daily.js --dry-run --limit 5 --no-draft  # cheapest real test (~$0.01)
 //   node daily.js                                 # real run -> Google Sheet (needs env; --yes if interactive)
-// Flags: --limit N (cap scored jobs), --no-draft (skip drafts), --yes (allow spend), --dry-run, --demo
+//   node daily.js --check                         # free: verify .env + Google Sheet (no fetch, no LLM)
+// Flags: --limit N (cap scored jobs), --no-draft (skip drafts), --yes (allow spend), --dry-run, --demo, --check
 import 'dotenv/config';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { profile } from './config/profile.js';
@@ -63,11 +64,25 @@ async function main() {
   const useFakeLlm = demo || process.env.JHA_FAKE_LLM === '1';
   const noDraft = argv.includes('--no-draft');
   const yes = argv.includes('--yes');
+  const check = argv.includes('--check');
   const limit = parseLimit(argv);
   const trigger = process.env.JHA_TRIGGER || (argv.includes('--manual') ? 'manual' : 'scheduled');
   console.log(`daily run: trigger=${trigger} dry=${dry} fixtures=${useFixtures}`);
-  console.log('fetching sources...');
 
+  if (check) {
+    // Free connection check: verify env + Google Sheet only. No fetch, no LLM, $0.
+    const spreadsheetId = requireEnv('SHEET_ID');
+    const s = await import('./src/sheets.js');
+    const sheets = await s.getSheets();
+    await s.ensureTabs(sheets, spreadsheetId, TAB_SPECS);
+    await s.appendRows(sheets, spreadsheetId, TAB.RUNS, [
+      runRow({ now: new Date().toISOString(), trigger: 'check', stats: { ok: 0, failed: 0, perSource: {} }, freshCount: 0, writtenCount: 0, tierCounts: {}, cost: 0, notes: 'connection check OK' }),
+    ]);
+    console.log('check OK: .env loaded, Google Sheet reachable, tabs ensured, test row written to Runs. No LLM used, $0 spent.');
+    return;
+  }
+
+  console.log('fetching sources...');
   const { jobs, stats } = await collectForRun(useFixtures);
   const deduped = dedupeJobs(jobs);
 

@@ -12,6 +12,7 @@
     "phase0": "node scripts/phase0.js",
     "daily": "node daily.js",
     "demo": "node daily.js --demo",
+    "check": "node daily.js --check",
     "start": "node daily.js"
   },
   "dependencies": {
