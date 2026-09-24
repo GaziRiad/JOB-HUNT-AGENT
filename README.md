@@ -19,23 +19,39 @@ GitHub Actions (daily cron OR the Sheet button)
   -> fetch sources (ATS boards now; aggregator feeds + HN in Phase 4), each isolated
   -> normalize to one schema -> dedupe -> drop already-seen (Seen tab)
   -> code prefilter (remote/contract? region not locked? stack match?)  [free]
-  -> LLM stage 1 (Claude Haiku): eligibility + fit score + rationale     [survivors only]
-  -> LLM stage 2 (Claude Sonnet): DM + cover letter / proposal           [top rows only]
+  -> cheap code rank + hard cap (default top 15)                         [free guardrail]
+  -> LLM stage 1 (Claude Haiku): eligibility + fit score + rationale     [capped set only]
+  -> LLM stage 2 (Claude Haiku): DM + cover letter / proposal           [top 5 only]
   -> write Google Sheet tabs + Seen + Runs
 ```
 
-Code does the cheap deterministic work; the LLM only sees survivors, so cost scales with ~20-40 jobs/day (a few cents to ~$0.10/day), not the raw fetch volume.
+Code does the cheap deterministic work; a free ranker then caps how many jobs reach the paid stage (default 15 scored, 5 drafted), so a run is bounded at roughly $0.03 to $0.05 and cannot blow past the cap. See "Cost and safety".
 
 ## Commands
 
 ```bash
 npm install
-npm test                                   # offline logic tests (no network/keys)
-npm run demo                               # full offline end-to-end (fixtures + fake LLM) -> out/preview.json
-node scripts/phase0.js                     # fetch curated ATS boards, print results
-node daily.js --dry-run                    # real fetch + scoring, writes out/preview.json (needs ANTHROPIC_API_KEY)
-node daily.js                              # real run -> Google Sheet (needs all env below)
+npm test                                      # offline logic tests (no network/keys/spend)
+npm run demo                                  # full offline end-to-end (fixtures + fake LLM), $0
+node scripts/phase0.js                        # fetch curated ATS boards, print results (free)
+node daily.js --dry-run --limit 5 --no-draft  # cheapest real test (~$0.01) -> out/preview.json
+node daily.js --dry-run --yes                 # real fetch + scoring -> out/preview.json (spends)
+node daily.js --yes                           # real run -> Google Sheet (needs all env below)
 ```
+
+Flags: `--limit N` caps scored jobs, `--no-draft` skips drafts, `--yes` allows spend (an interactive run refuses to spend without it), `--dry-run` writes a file instead of the Sheet, `--demo` runs fully offline.
+
+## Cost and safety
+
+Guardrails so a run can never surprise you:
+
+- **Hard cap:** at most `maxScored` jobs (default 15) reach the paid stage per run, picked by a free code ranker; the rest are skipped.
+- **Draft cap:** at most `draftTopN` jobs (default 5) get a drafted DM + letter (the pricier half); `--no-draft` skips drafting.
+- **Spend gate:** an interactive local run prints its estimated cost and stops unless you pass `--yes`. `npm run demo` never spends.
+- **Auto-run off:** the daily GitHub Actions schedule is disabled by default, so it only runs when you click the Sheet button or trigger it manually. $0/day until you turn the schedule on.
+- **Model:** both stages use Claude Haiku (cheapest capable model). Set `JHA_DRAFT_MODEL=claude-sonnet-5` if you later want nicer drafts.
+
+Rough cost with defaults: a normal run is ~$0.03 to $0.05, bounded by the caps; `--limit 5 --no-draft` is ~$0.01. Also set a monthly spend limit in the Anthropic console as a backstop. The `Runs` tab logs the real cost of every run.
 
 ## Setup
 
@@ -50,18 +66,18 @@ The tabs (`Remote - Tier 1`, `Remote - Tier 2`, `Freelance / Contract`, `Runs`, 
 
 ### 2. Anthropic key (paid, small)
 
-Get an API key from the Anthropic Console. Scoring uses Haiku, drafting uses Sonnet; both are set in `src/anthropic.js` and overridable via `JHA_SCORE_MODEL` / `JHA_DRAFT_MODEL`.
+Get an API key from the Anthropic Console. Both stages use Claude Haiku by default (cheapest); override with `JHA_SCORE_MODEL` / `JHA_DRAFT_MODEL`. Set a monthly spend limit in the console for safety.
 
 ### 3. Local run
 
-Copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY`, `SHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON` (the key JSON on one line, or base64-encoded). Then `node daily.js`.
+Copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY`, `SHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON` (the key JSON on one line, or base64-encoded). Then `node daily.js --yes` (a local run needs `--yes` to spend).
 
 ### 4. Automate on GitHub Actions (no machine needed)
 
 1. Push this repo to GitHub and make it **public** (unlimited free Actions minutes and more reliable cron; secrets stay protected).
 2. Settings -> Secrets and variables -> Actions -> add `ANTHROPIC_API_KEY`, `SHEET_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`.
 3. Ensure `.github/workflows/daily.yml` is on the **default branch** (scheduled workflows only fire from there).
-4. Trigger a manual run from the Actions tab to verify, then let the daily cron take over. Adjust the cron time in `daily.yml` (it is UTC).
+4. Trigger a manual run from the Actions tab to verify. The daily cron is **disabled by default** (so nothing spends while you validate); uncomment the `schedule:` lines in `daily.yml` when you want it to run on its own. Cron time is UTC.
 
 ### 5. Refresh button in the Sheet (optional)
 
@@ -73,7 +89,7 @@ Copy `.env.example` to `.env` and fill in `ANTHROPIC_API_KEY`, `SHEET_ID`, and `
 
 - `config/companies.js` - the curated ATS boards (Greenhouse/Lever/Ashby tokens). **These seeds are unverified guesses; run `node scripts/phase0.js` and keep the ones that resolve.** This list is the main lever: add genuinely global-hiring / worldwide-remote companies.
 - `config/profile.js` - your stack keywords, seniority, timezone, eligibility signals.
-- `config/weights.js` - scoring knobs (eligibility weighting, tier threshold, draft threshold).
+- `config/weights.js` - scoring and **cost knobs**: `maxScored` (jobs sent to the paid stage per run, default 15), `draftTopN` (max drafts per run, default 5), eligibility weighting, thresholds.
 
 ## Caveats
 
@@ -93,4 +109,4 @@ The fixture tests verify the parsing logic given each API's documented shape. Th
 
 ## Status
 
-All planned phases built and tested (19 offline tests): Phase 0 (ATS fetchers + schema), Phase 1 (Google Sheets + dedupe + prefilter), Phase 3 (LLM scoring + tiers + drafts), Phase 2 (Actions), Phase 5 (refresh button), Phase 4 (aggregator feeds + HN + contract routing).
+All planned phases built and tested (21 offline tests): Phase 0 (ATS fetchers + schema), Phase 1 (Google Sheets + dedupe + prefilter), Phase 3 (LLM scoring + tiers + drafts), Phase 2 (Actions), Phase 5 (refresh button), Phase 4 (aggregator feeds + HN + contract routing), plus cost guardrails (rank + cap, draft cap, spend gate, auto-run off by default).

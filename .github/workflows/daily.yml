@@ -9,8 +9,10 @@ name: job-hunt-agent daily
 # IMPORTANT: scheduled workflows only run from the repository's DEFAULT branch,
 # so this file must be merged to the default branch to fire on cron.
 on:
-  schedule:
-    - cron: '0 6 * * *' # 06:00 UTC daily (07:00 in UTC+1). Adjust as you like.
+  # Daily auto-run is OFF by default so nothing spends while you validate.
+  # Uncomment the two lines below to turn on the daily schedule when ready.
+  # schedule:
+  #   - cron: '0 6 * * *' # 06:00 UTC daily (07:00 in UTC+1). Adjust as you like.
   workflow_dispatch: {}
 
 permissions:

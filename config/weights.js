@@ -8,7 +8,14 @@ export const weights = {
   // eligibilityConfidence at/above this lands a full-time remote job in Tier 1.
   tier1MinEligibility: 0.6,
 
-  // Only spend tokens drafting outreach for a Tier 2 / Freelance row at/above
-  // this final score (Tier 1 always gets a draft).
+  // Only spend tokens drafting outreach for a row at/above this final score.
   draftScoreThreshold: 55,
+
+  // COST GUARDRAILS (keep these low while validating the strategy).
+  // Hard cap on how many jobs get sent to the paid scoring stage per run.
+  // A cheap code ranker picks the most promising this-many; the rest are skipped.
+  maxScored: 15,
+  // At most this many of the scored jobs get a drafted DM + letter (the pricier
+  // stage). Set to 0 (or run with --no-draft) to skip drafting entirely.
+  draftTopN: 5,
 };

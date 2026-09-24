@@ -1,17 +1,19 @@
-// Orchestrates the LLM stages over the surviving jobs with limited concurrency.
-// Stage 1 (score) runs on every survivor; stage 2 (draft) only when warranted.
+// Orchestrates the LLM stages over the (already ranked + capped) jobs.
+// Stage 1 (score) runs on every job passed in; stage 2 (draft) runs only on the
+// top `draftLimit` by score that clear the threshold, to bound cost.
 import pLimit from 'p-limit';
 import { MODELS, callStructured, estimateCost } from './anthropic.js';
 import { SCORE_TOOL, buildSystem, buildUser, parseAssessment } from './score.js';
 import { DRAFT_TOOL, buildDraftSystem, buildDraftUser, parseDraft } from './draft.js';
 import { EmploymentType } from './lib/job.js';
-import { TAB, tabForJob } from './rows.js';
 
-export async function scoreAndDraft(client, jobs, { profile, weights, concurrency = 4 } = {}) {
+export async function scoreAndDraft(client, jobs, { profile, weights, concurrency = 4, draftLimit } = {}) {
   const limit = pLimit(concurrency);
+  const cap = draftLimit == null ? weights.draftTopN : draftLimit;
   let cost = 0;
 
-  const enriched = await Promise.all(
+  // Stage 1: score everything passed in.
+  const scored = await Promise.all(
     jobs.map((job) => limit(async () => {
       const s1 = await callStructured(client, {
         model: MODELS.score,
@@ -22,32 +24,35 @@ export async function scoreAndDraft(client, jobs, { profile, weights, concurrenc
       });
       cost += estimateCost(MODELS.score, s1.usage);
       const scoring = parseAssessment(s1.input, weights);
-
-      // Trust the LLM's employment classification for routing when it's sure.
       if (scoring.employmentType && scoring.employmentType !== EmploymentType.UNKNOWN) {
         job.employmentType = scoring.employmentType;
       }
-
-      const tab = tabForJob(job, scoring);
-      const wantDraft = tab === TAB.TIER1 || scoring.score >= weights.draftScoreThreshold;
-      if (wantDraft) {
-        const s2 = await callStructured(client, {
-          model: MODELS.draft,
-          system: buildDraftSystem(profile),
-          user: buildDraftUser(job, scoring),
-          tool: DRAFT_TOOL,
-          maxTokens: 900,
-        });
-        cost += estimateCost(MODELS.draft, s2.usage);
-        const draft = parseDraft(s2.input);
-        scoring.dm = draft.dm;
-        if (job.employmentType === EmploymentType.CONTRACT) scoring.proposal = draft.letter;
-        else scoring.coverLetter = draft.letter;
-      }
-
       return { job, scoring };
     })),
   );
 
-  return { enriched, cost };
+  // Stage 2: draft only the top `cap` by score that clear the threshold.
+  const draftSet = scored
+    .filter((e) => e.scoring.score >= weights.draftScoreThreshold)
+    .sort((a, b) => b.scoring.score - a.scoring.score)
+    .slice(0, Math.max(0, cap));
+
+  await Promise.all(
+    draftSet.map((e) => limit(async () => {
+      const s2 = await callStructured(client, {
+        model: MODELS.draft,
+        system: buildDraftSystem(profile),
+        user: buildDraftUser(e.job, e.scoring),
+        tool: DRAFT_TOOL,
+        maxTokens: 900,
+      });
+      cost += estimateCost(MODELS.draft, s2.usage);
+      const draft = parseDraft(s2.input);
+      e.scoring.dm = draft.dm;
+      if (e.job.employmentType === EmploymentType.CONTRACT) e.scoring.proposal = draft.letter;
+      else e.scoring.coverLetter = draft.letter;
+    })),
+  );
+
+  return { enriched: scored, cost };
 }

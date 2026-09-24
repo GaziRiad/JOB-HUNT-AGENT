@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Orchestrator: fetch -> dedupe -> drop already-seen -> prefilter -> (Phase 3:
-// score + draft) -> write to Google Sheet tabs + Seen + Runs.
+// Orchestrator: fetch -> dedupe -> drop already-seen -> prefilter -> cheap rank
+// + cap -> LLM score + draft -> write to Google Sheet tabs + Seen + Runs.
 //
-//   node daily.js                 # real run (needs SHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON)
-//   node daily.js --dry-run       # write out/preview.json instead of the Sheet
-//   node daily.js --demo          # offline end-to-end: fixtures + fake LLM, no keys/network
-//   JHA_FIXTURES=1 node daily.js --dry-run   # offline end-to-end using test fixtures
+//   node daily.js --demo                          # offline: fixtures + fake LLM, no keys/network/spend
+//   node daily.js --dry-run --yes                 # real fetch + scoring to out/preview.json (spends)
+//   node daily.js --dry-run --limit 5 --no-draft  # cheapest real test (~$0.01)
+//   node daily.js                                 # real run -> Google Sheet (needs env; --yes if interactive)
+// Flags: --limit N (cap scored jobs), --no-draft (skip drafts), --yes (allow spend), --dry-run, --demo
 import 'dotenv/config';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { profile } from './config/profile.js';
@@ -14,8 +15,9 @@ import { collectJobs } from './src/sources/index.js';
 import { dedupeJobs } from './src/dedupe.js';
 import { prefilter } from './src/prefilter.js';
 import { TAB, TAB_SPECS, jobToRow, seenRow, runRow, tabForJob, sumFetched } from './src/rows.js';
-import { createClient } from './src/anthropic.js';
+import { createClient, MODELS, estimateRunCost } from './src/anthropic.js';
 import { scoreAndDraft } from './src/enrich.js';
+import { rankAndCap } from './src/rank.js';
 import { makeFakeClient } from './src/fakeClient.js';
 
 function requireEnv(key) {
@@ -25,6 +27,14 @@ function requireEnv(key) {
     process.exit(1);
   }
   return v;
+}
+
+function parseLimit(argv) {
+  const i = argv.findIndex((a) => a === '--limit' || a.startsWith('--limit='));
+  if (i === -1) return null;
+  const raw = argv[i].includes('=') ? argv[i].split('=')[1] : argv[i + 1];
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
 async function collectFromFixtures() {
@@ -46,12 +56,17 @@ async function collectForRun(useFixtures) {
 }
 
 async function main() {
-  const demo = process.argv.includes('--demo'); // fixtures + fake LLM, no keys/network
-  const dry = demo || process.argv.includes('--dry-run');
+  const argv = process.argv.slice(2);
+  const demo = argv.includes('--demo'); // fixtures + fake LLM, no keys/network/spend
+  const dry = demo || argv.includes('--dry-run');
   const useFixtures = demo || process.env.JHA_FIXTURES === '1';
   const useFakeLlm = demo || process.env.JHA_FAKE_LLM === '1';
-  const trigger = process.env.JHA_TRIGGER || (process.argv.includes('--manual') ? 'manual' : 'scheduled');
+  const noDraft = argv.includes('--no-draft');
+  const yes = argv.includes('--yes');
+  const limit = parseLimit(argv);
+  const trigger = process.env.JHA_TRIGGER || (argv.includes('--manual') ? 'manual' : 'scheduled');
   console.log(`daily run: trigger=${trigger} dry=${dry} fixtures=${useFixtures}`);
+  console.log('fetching sources...');
 
   const { jobs, stats } = await collectForRun(useFixtures);
   const deduped = dedupeJobs(jobs);
@@ -70,18 +85,41 @@ async function main() {
   const fresh = deduped.filter((j) => !seenIds.has(j.id));
   const passed = fresh.filter((j) => prefilter(j, profile).pass);
 
-  // LLM stage: score + tier + draft on survivors. Falls back to unscored rows
-  // when there is no client (no ANTHROPIC_API_KEY), so the pipeline still runs.
+  // Cost guardrail: rank cheaply (free) and keep only the top N for the paid stage.
+  const cap = limit != null ? limit : weights.maxScored;
+  const ranked = rankAndCap(passed, profile, cap);
+  const draftLimit = noDraft ? 0 : weights.draftTopN;
+
+  // Per-source counts so the fetch phase is never a silent black box.
+  for (const [label, v] of Object.entries(stats.perSource)) {
+    console.log(`  ${typeof v === 'number' ? 'ok  ' : 'fail'} ${label}: ${v}`);
+  }
+  console.log(`candidates: ${passed.length} passed filter -> will score top ${ranked.length} (cap ${cap})`);
+
+  // LLM stage: score + draft. Falls back to unscored rows when there is no client.
   const client = useFakeLlm ? makeFakeClient() : createClient();
+
+  // Spend gate: never charge on an interactive run without an explicit --yes.
+  const willSpend = !!client && !useFakeLlm && ranked.length > 0;
+  if (willSpend) {
+    const estDrafts = Math.min(draftLimit, ranked.length);
+    const est = estimateRunCost(ranked.length, estDrafts);
+    console.log(`about to score ${ranked.length} + draft up to ${estDrafts} (${MODELS.score}/${MODELS.draft}): estimated ~$${est.toFixed(2)}`);
+    if (process.stdout.isTTY && !yes) {
+      console.log('this spends real credits. re-run with --yes to proceed, or `npm run demo` for a free test.');
+      return;
+    }
+  }
+
   let enriched;
   let llmCost = null;
   if (client) {
-    const r = await scoreAndDraft(client, passed, { profile, weights });
+    const r = await scoreAndDraft(client, ranked, { profile, weights, draftLimit });
     enriched = r.enriched;
     llmCost = r.cost;
     enriched.sort((a, b) => (b.scoring?.score || 0) - (a.scoring?.score || 0));
   } else {
-    enriched = passed.map((job) => ({ job, scoring: null }));
+    enriched = ranked.map((job) => ({ job, scoring: null }));
   }
 
   const now = new Date().toISOString();
@@ -92,7 +130,7 @@ async function main() {
     (byTab[tab] ||= []).push(jobToRow(job, scoring, now));
   }
   const tierCounts = Object.fromEntries(Object.entries(byTab).map(([k, v]) => [k, v.length]));
-  const written = passed.length;
+  const written = enriched.length;
 
   if (dry) {
     mkdirSync('out', { recursive: true });
@@ -100,7 +138,7 @@ async function main() {
   } else {
     const { s, sheets, spreadsheetId } = ctx;
     for (const [tab, rows] of Object.entries(byTab)) await s.appendRows(sheets, spreadsheetId, tab, rows);
-    await s.appendRows(sheets, spreadsheetId, TAB.SEEN, passed.map((j) => seenRow(j, now)));
+    await s.appendRows(sheets, spreadsheetId, TAB.SEEN, enriched.map(({ job }) => seenRow(job, now)));
     await s.appendRows(sheets, spreadsheetId, TAB.RUNS, [
       runRow({ now, trigger, stats, freshCount: fresh.length, writtenCount: written, tierCounts, cost: llmCost, notes: client ? '' : 'no LLM key: rows unscored' }),
     ]);
